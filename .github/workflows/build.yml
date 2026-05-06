@@ -3,8 +3,8 @@ name: Build solarmapp
 on:
   push:
     tags:
-      - 'v*'          # Se activa al crear un tag tipo v1.0.0
-  workflow_dispatch:  # También se puede lanzar manualmente desde GitHub
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,35 +13,30 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: '--target aarch64-apple-darwin'   # Mac Apple Silicon
+            args: '--target aarch64-apple-darwin'
           - platform: macos-latest
-            args: '--target x86_64-apple-darwin'    # Mac Intel
+            args: '--target x86_64-apple-darwin'
           - platform: windows-latest
-            args: ''                                # Windows x64 → .exe + .msi
+            args: ''
           - platform: ubuntu-22.04
-            args: ''                                # Linux → .deb + .AppImage
+            args: ''
 
     runs-on: ${{ matrix.platform }}
 
     steps:
-      # 1. Descargar el código
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Instalar Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 24
 
-      # 3. Instalar Rust
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      # 4. Dependencias del sistema en Linux
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -54,17 +49,14 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
-      # 5. Cache de Rust para compilaciones más rápidas
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      # 6. Instalar dependencias npm
       - name: Install npm dependencies
         run: npm install
 
-      # 7. Compilar con Tauri
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -75,19 +67,12 @@ jobs:
           releaseBody: |
             ## solarmapp ${{ github.ref_name }}
 
-            ### Descargas
-
             | Plataforma | Archivo |
             |------------|---------|
-            | macOS (Apple Silicon) | `solarmapp_*_aarch64.dmg` |
-            | macOS (Intel)         | `solarmapp_*_x64.dmg` |
-            | Windows               | `solarmapp_*_x64-setup.exe` o `.msi` |
-            | Linux                 | `solarmapp_*_amd64.AppImage` |
-
-            ### Instalación
-            - **macOS**: abre el `.dmg`, arrastra a Aplicaciones
-            - **Windows**: ejecuta el `.exe` o `.msi` como administrador
-            - **Linux**: dale permisos de ejecución al `.AppImage` (`chmod +x`)
+            | macOS Apple Silicon | `solarmapp_*_aarch64.dmg` |
+            | macOS Intel | `solarmapp_*_x64.dmg` |
+            | Windows | `solarmapp_*_x64-setup.exe` |
+            | Linux | `solarmapp_*_amd64.AppImage` |
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
