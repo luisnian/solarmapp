@@ -1,0 +1,2140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>SolarMap – Simulador de Sombras y Sol</title>
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#e8edf5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="solarm.app">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+<!-- SEO -->
+<meta name="description" content="Simulador de posición solar, sombras y fases lunares sobre mapa interactivo.">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+<script src="https://unpkg.com/leaflet-shadow-simulator/dist/leaflet-shadow-simulator.umd.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   solarm.app — Light Pro Edition v3
+   Pearl glass · warm light · mobile-first precision UI
+   ═══════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  /* ── Palette (light) ── */
+  --bg:            #e8edf5;
+  --bg-panel:      rgba(235,241,250,0.72);
+  --bg-card:       rgba(255,255,255,0.62);
+  --bg-card-hover: rgba(255,255,255,0.82);
+  --bg-input:      rgba(255,255,255,0.70);
+  --bg-btn:        rgba(255,255,255,0.55);
+  --bg-header:     rgba(240,245,255,0.80);
+  --bg-timeline:   rgba(230,237,250,0.90);
+
+  /* ── Borders ── */
+  --b0: rgba(100,130,180,0.10);
+  --b1: rgba(100,130,180,0.18);
+  --b2: rgba(100,130,180,0.30);
+  --b3: rgba(100,130,180,0.50);
+
+  /* ── Typography ── */
+  --t1: #1a2236;
+  --t2: #4a5878;
+  --t3: #8a9bbf;
+  --t4: #b8c4d8;
+
+  /* ── Accent ── */
+  --sun:      #e8820c;
+  --sun-dim:  rgba(232,130,12,0.12);
+  --sun-glow: rgba(232,130,12,0.06);
+  --blue:     #2d7dd2;
+  --blue-dim: rgba(45,125,210,0.12);
+  --green:    #16a870;
+  --red:      #e0544c;
+  --moon:     #5b80b8;
+
+  /* ── Blur ── */
+  --blur-xl: blur(40px) saturate(1.6) brightness(1.04);
+  --blur-lg: blur(24px) saturate(1.5) brightness(1.02);
+  --blur-md: blur(14px) saturate(1.3);
+  --blur-sm: blur(8px)  saturate(1.2);
+
+  /* ── Shadows ── */
+  --sh-panel:  0 0 0 1px var(--b1), 0 24px 48px rgba(80,110,160,0.12), inset 0 1px 0 rgba(255,255,255,0.85);
+  --sh-card:   0 0 0 1px var(--b1), 0 4px 16px rgba(80,110,160,0.10),  inset 0 1px 0 rgba(255,255,255,0.80);
+  --sh-btn:    0 2px 8px rgba(80,110,160,0.14), inset 0 1px 0 rgba(255,255,255,0.90), 0 0 0 1px var(--b1);
+  --sh-glow:   0 0 24px rgba(232,130,12,0.18);
+
+  --panel-w: 280px;
+  --header-h: 52px;
+}
+
+html, body { height:100%; overflow:hidden; }
+body {
+  font-family: 'Outfit', -apple-system, 'SF Pro Display', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  display: flex; flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ambient warm-sky background */
+body::before {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 55% at  5% -5%,  rgba(232,160,60,0.18)  0%, transparent 55%),
+    radial-gradient(ellipse 70% 55% at 95% 100%,  rgba(100,160,240,0.16) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 50%  50%,  rgba(200,215,240,0.20) 0%, transparent 65%);
+}
+body::after {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background: radial-gradient(ellipse 45% 35% at 80% 15%, rgba(255,230,180,0.14) 0%, transparent 50%);
+}
+
+#app { display:flex; flex-direction:column; height:100vh; position:relative; z-index:1; }
+
+/* ════════════════════════════════════════════
+   HEADER
+   ════════════════════════════════════════════ */
+#header {
+  height: var(--header-h);
+  background: var(--bg-header);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-bottom: 1px solid var(--b1);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.90), 0 4px 24px rgba(80,110,160,0.10);
+  padding: 0 14px;
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0; z-index: 2000;
+}
+
+#logo { display:flex; align-items:center; white-space:nowrap; flex-shrink:0; }
+#logo svg { height:32px; width:auto; }
+
+#search-wrap { flex:1; max-width:320px; position:relative; }
+#search {
+  width:100%;
+  background: var(--bg-input);
+  backdrop-filter: var(--blur-sm);
+  border: 1px solid var(--b1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 2px 6px rgba(80,110,160,0.08);
+  color: var(--t1);
+  padding: 7px 34px 7px 12px;
+  border-radius: 10px;
+  font-size: 12.5px; font-family: inherit; font-weight: 400;
+  outline: none; transition: all .2s;
+}
+#search::placeholder { color: var(--t3); }
+#search:focus {
+  border-color: rgba(45,125,210,0.40);
+  background: rgba(255,255,255,0.88);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 0 0 3px rgba(45,125,210,0.14);
+}
+#search-btn {
+  position:absolute; right:9px; top:50%; transform:translateY(-50%);
+  background:none; border:none; color:var(--t3); cursor:pointer; transition:color .15s;
+}
+#search-btn:hover { color:var(--sun); }
+
+#header-info { display:flex; gap:4px; align-items:center; overflow-x:auto; overflow-y:hidden; }
+#header-info::-webkit-scrollbar { display:none; }
+.hpill {
+  background: var(--bg-btn);
+  backdrop-filter: var(--blur-sm);
+  border: 1px solid var(--b1);
+  box-shadow: var(--sh-btn);
+  border-radius: 18px;
+  padding: 4px 10px;
+  font-size: 11px; font-weight: 500;
+  color: var(--t2); white-space: nowrap;
+  transition: all .2s; letter-spacing: 0.1px;
+  flex-shrink: 0;
+}
+.hpill span { color: var(--sun); font-weight: 650; font-variant-numeric: tabular-nums; }
+.hpill:hover { border-color: var(--b2); background: rgba(255,255,255,0.85); color: var(--t1); }
+
+/* ════════════════════════════════════════════
+   MAIN LAYOUT
+   ════════════════════════════════════════════ */
+#main { display:flex; flex:1; overflow:hidden; min-height:0; }
+
+/* ════════════════════════════════════════════
+   PANELS
+   ════════════════════════════════════════════ */
+#left-panel, #right-panel {
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  backdrop-filter: var(--blur-lg);
+  -webkit-backdrop-filter: var(--blur-lg);
+  display: flex; flex-direction: column;
+  overflow-y: auto; position: relative;
+}
+#left-panel  { width: var(--panel-w); border-right: 1px solid var(--b1); box-shadow: var(--sh-panel); }
+#right-panel { width: 224px;          border-left:  1px solid var(--b1); box-shadow: var(--sh-panel); }
+
+/* Pearl inner glow */
+#left-panel::after, #right-panel::after {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 40%);
+}
+.section { padding:12px 13px; border-bottom:1px solid var(--b0); position:relative; z-index:1; }
+.section:first-child { border-top: 1px solid rgba(255,255,255,0.60); }
+
+.section-title {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--t3); font-weight: 700; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.section-title::before {
+  content:''; display:block; width:14px; height:1px;
+  background: linear-gradient(90deg, var(--sun), transparent);
+  flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════════
+   DATE / TIME
+   ════════════════════════════════════════════ */
+#dt-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.dt-input {
+  background: var(--bg-input);
+  border: 1px solid var(--b1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 1px 4px rgba(80,110,160,0.08);
+  color: var(--t1);
+  padding: 6px 8px; border-radius: 9px;
+  font-size: 12px; font-family: inherit; font-weight: 500;
+  width:100%; outline:none; transition: all .2s;
+  color-scheme: light;
+}
+.dt-input:focus {
+  border-color: rgba(45,125,210,0.40);
+  background: rgba(255,255,255,0.95);
+  box-shadow: 0 0 0 3px rgba(45,125,210,0.12);
+}
+
+#time-slider-wrap { margin-top:10px; }
+#time-slider {
+  width:100%; height:3px; border-radius:2px; cursor:grab;
+  accent-color: var(--sun);
+  background: rgba(100,130,180,0.15);
+  appearance: none; -webkit-appearance: none;
+}
+#time-slider:active { cursor:grabbing; }
+#time-slider::-webkit-slider-thumb {
+  appearance:none; width:14px; height:14px; border-radius:50%;
+  background: var(--sun); border:2px solid white;
+  box-shadow:0 2px 8px rgba(232,130,12,0.45); cursor:grab;
+}
+#time-display {
+  text-align:center; font-size:28px; font-weight:700;
+  letter-spacing:3px; margin:9px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-family: 'DM Mono', monospace;
+  background: linear-gradient(135deg, #e8820c 0%, #f5b840 50%, #c96000 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  filter: drop-shadow(0 1px 12px rgba(232,130,12,0.20));
+}
+
+#time-btn-row { display:flex; gap:4px; margin-top:9px; flex-wrap:wrap; }
+.tmbtn {
+  flex:1; min-width:52px;
+  background: var(--bg-btn);
+  border: 1px solid var(--b1);
+  box-shadow: var(--sh-btn);
+  color: var(--t2);
+  padding: 5px 2px; border-radius: 8px;
+  font-size: 9.5px; font-family: inherit; font-weight: 500;
+  cursor:pointer; text-align:center;
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+}
+.tmbtn:hover {
+  background: rgba(255,255,255,0.88); border-color: var(--b2); color: var(--t1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(80,110,160,0.16), inset 0 1px 0 rgba(255,255,255,0.95);
+}
+.tmbtn:active { transform:translateY(0); }
+.tmbtn.active {
+  background: var(--sun-dim); border-color: rgba(232,130,12,0.35); color: var(--sun);
+  box-shadow: 0 0 14px rgba(232,130,12,0.12), inset 0 1px 0 rgba(232,130,12,0.08);
+}
+
+/* ════════════════════════════════════════════
+   SUN CARDS
+   ════════════════════════════════════════════ */
+#sun-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.sun-card {
+  background: var(--bg-card);
+  border: 1px solid var(--b1);
+  box-shadow: var(--sh-card);
+  border-radius: 11px; padding: 9px 10px;
+  transition: all .2s; position:relative; overflow:hidden;
+}
+.sun-card::before {
+  content:''; position:absolute; inset:0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.65) 0%, transparent 55%);
+  pointer-events:none;
+}
+.sun-card:hover { background: var(--bg-card-hover); transform:translateY(-1px); box-shadow: 0 0 0 1px var(--b2), 0 8px 20px rgba(80,110,160,0.14), inset 0 1px 0 rgba(255,255,255,0.90); }
+.sun-card-label { font-size:9px; color:var(--t3); text-transform:uppercase; letter-spacing:.6px; margin-bottom:4px; font-weight:600; }
+.sun-card-value { font-size:15px; font-weight:680; color:var(--t1); font-variant-numeric:tabular-nums; font-family:'DM Mono',monospace; }
+.sun-card-value.gold  { color:var(--sun); }
+.sun-card-value.blue  { color:var(--blue); }
+.sun-card-value.green { color:var(--green); }
+.sun-card-value.red   { color:var(--red); }
+
+/* ════════════════════════════════════════════
+   ANIMATION TOGGLE
+   ════════════════════════════════════════════ */
+#anim-row { display:flex; align-items:center; gap:10px; }
+.toggle-wrap { display:flex; align-items:center; gap:9px; font-size:12px; color:var(--t2); font-weight:500; }
+.toggle { position:relative; width:40px; height:22px; }
+.toggle input { opacity:0; width:0; height:0; }
+.slider-tog {
+  position:absolute; cursor:pointer; inset:0;
+  background: rgba(100,130,180,0.12); border:1px solid var(--b2); border-radius:22px;
+  transition: all .25s cubic-bezier(.4,0,.2,1);
+  box-shadow: inset 0 1px 3px rgba(80,110,160,0.15), inset 0 -1px 0 rgba(255,255,255,0.80);
+}
+.slider-tog:before {
+  content:''; position:absolute; width:16px; height:16px; left:2px; bottom:2px;
+  background: white; border-radius:50%;
+  transition: all .25s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 1px 4px rgba(80,110,160,0.30);
+}
+input:checked + .slider-tog { background:rgba(232,130,12,0.18); border-color:rgba(232,130,12,0.45); }
+input:checked + .slider-tog:before { transform:translateX(18px); background:var(--sun); box-shadow:0 2px 8px rgba(232,130,12,0.40); }
+
+.speed-select {
+  background: var(--bg-btn); border:1px solid var(--b1); color:var(--t2);
+  font-size:10.5px; font-family:inherit; padding:3px 7px; border-radius:7px; outline:none; cursor:pointer;
+  color-scheme: light;
+  box-shadow: var(--sh-btn);
+}
+
+/* ════════════════════════════════════════════
+   LOCATION
+   ════════════════════════════════════════════ */
+#loc-info { font-size:11.5px; color:var(--t2); line-height:1.75; }
+.coord { color:var(--blue); font-weight:600; font-variant-numeric:tabular-nums; font-family:'DM Mono',monospace; }
+
+/* ════════════════════════════════════════════
+   MAP
+   ════════════════════════════════════════════ */
+#map-container { flex:1; position:relative; min-width:0; }
+#map { width:100%; height:100%; }
+#shadow-canvas { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:400; }
+
+/* Map overlay buttons */
+#map-overlay {
+  position:absolute; bottom:82px; right:12px; z-index:1000;
+  display:flex; flex-direction:column; gap:7px; align-items:flex-end;
+}
+.map-btn {
+  background: rgba(240,245,255,0.78);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--b2);
+  box-shadow: var(--sh-card);
+  color: var(--t1);
+  width:38px; height:38px; border-radius:11px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:16px;
+  transition: all .2s cubic-bezier(.4,0,.2,1);
+}
+.map-btn:hover {
+  background: rgba(255,255,255,0.95); border-color:var(--b3); transform:translateY(-2px);
+  box-shadow: 0 8px 20px rgba(80,110,160,0.20), inset 0 1px 0 rgba(255,255,255,0.95);
+}
+.map-btn:active { transform:translateY(0); }
+
+#coords-display {
+  background: rgba(240,245,255,0.82);
+  backdrop-filter: var(--blur-sm);
+  border: 1px solid var(--b1);
+  box-shadow: var(--sh-card);
+  color: var(--t2); font-size:10.5px; font-weight:500;
+  padding: 5px 12px; border-radius:18px; white-space:nowrap;
+  font-variant-numeric: tabular-nums; font-family:'DM Mono',monospace;
+}
+
+/* ════════════════════════════════════════════
+   TIMELINE BAR — Draggable
+   ════════════════════════════════════════════ */
+#map-timeline-bar {
+  position:absolute; bottom:0; left:0; right:0; z-index:1000;
+  background: var(--bg-timeline);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-top: 1px solid var(--b1);
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.90), 0 -12px 30px rgba(80,110,160,0.10);
+  padding: 8px 14px 6px;
+  pointer-events: none;
+}
+#map-timeline-inner { width:100%; }
+#timeline-canvas {
+  width:100%; border-radius:6px; display:block;
+  cursor: grab;
+  pointer-events: all;
+  box-shadow: 0 0 0 1px var(--b1), 0 2px 8px rgba(80,110,160,0.10);
+  transition: box-shadow .2s;
+}
+#timeline-canvas:hover {
+  box-shadow: 0 0 0 1px rgba(232,130,12,0.30), 0 2px 12px rgba(80,110,160,0.12);
+}
+#timeline-labels {
+  display:flex; justify-content:space-between;
+  font-size:8.5px; color:var(--t3);
+  margin-top:3px; padding:0 2px;
+  pointer-events:none; font-weight:500; letter-spacing:0.3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ════════════════════════════════════════════
+   PHASES
+   ════════════════════════════════════════════ */
+#phases-list { display:flex; flex-direction:column; gap:1px; }
+.phase-row {
+  display:flex; align-items:center; gap:9px;
+  padding: 5px 7px; border-radius:8px; transition:all .15s; cursor:default;
+}
+.phase-row:hover { background: rgba(100,130,180,0.07); }
+.phase-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.phase-label { font-size:10.5px; color:var(--t2); flex:1; font-weight:450; }
+.phase-time { font-size:11px; font-weight:650; color:var(--t1); white-space:nowrap; font-variant-numeric:tabular-nums; font-family:'DM Mono',monospace; }
+.phase-now { background:rgba(232,130,12,0.10)!important; box-shadow:inset 0 0 0 1px rgba(232,130,12,0.22); border-radius:8px; }
+.phase-now .phase-label { color:var(--sun); font-weight:580; }
+.phase-now .phase-time  { color:var(--sun); }
+
+/* ════════════════════════════════════════════
+   COMPASS
+   ════════════════════════════════════════════ */
+#azimuth-wrap { display:flex; flex-direction:column; align-items:center; gap:7px; }
+#azimuth-canvas { display:block; }
+#azimuth-info { font-size:10.5px; color:var(--t2); text-align:center; line-height:1.9; font-weight:450; font-family:'DM Mono',monospace; }
+
+/* ════════════════════════════════════════════
+   STATS
+   ════════════════════════════════════════════ */
+.stat-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding: 5px 0; border-bottom:1px solid var(--b0);
+}
+.stat-row:last-child { border-bottom:none; }
+.stat-key { font-size:10.5px; color:var(--t2); font-weight:450; }
+.stat-val { font-size:11.5px; font-weight:660; color:var(--blue); font-variant-numeric:tabular-nums; font-family:'DM Mono',monospace; }
+
+/* ════════════════════════════════════════════
+   CANVASES
+   ════════════════════════════════════════════ */
+#sun-path-canvas {
+  width:100%; border-radius:10px; display:block;
+  box-shadow: 0 0 0 1px var(--b1), 0 4px 14px rgba(80,110,160,0.12);
+}
+#year-canvas {
+  width:100%; display:block; border-radius:10px;
+  box-shadow: 0 0 0 1px var(--b1), 0 4px 14px rgba(80,110,160,0.10);
+}
+#elevation-canvas {
+  width:100%; display:block; border-radius:10px;
+  box-shadow: 0 0 0 1px var(--b1), 0 4px 14px rgba(80,110,160,0.10);
+}
+
+/* ════════════════════════════════════════════
+   ELEVATION LEGEND
+   ════════════════════════════════════════════ */
+#elevation-legend { display:flex; gap:14px; margin-top:6px; font-size:10.5px; color:var(--t2); font-weight:500; }
+.elev-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; vertical-align:middle; }
+#elevation-values { margin-top:5px; font-size:10.5px; color:var(--t2); display:flex; gap:12px; }
+
+/* ════════════════════════════════════════════
+   SCROLLBAR
+   ════════════════════════════════════════════ */
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--b2); border-radius:2px; }
+::-webkit-scrollbar-thumb:hover { background:var(--b3); }
+
+/* ════════════════════════════════════════════
+   LEAFLET
+   ════════════════════════════════════════════ */
+.leaflet-tile { filter:brightness(1.02) saturate(0.95); }
+.leaflet-control-zoom { border:none!important; box-shadow:var(--sh-card)!important; }
+.leaflet-control-zoom a {
+  background: rgba(240,245,255,0.88)!important; backdrop-filter:blur(16px)!important;
+  color: var(--t1)!important; border:1px solid var(--b1)!important;
+  font-size:16px!important; transition:all .2s!important;
+}
+.leaflet-control-zoom a:hover { background:rgba(255,255,255,0.98)!important; border-color:var(--b2)!important; color:var(--sun)!important; }
+.leaflet-control-zoom-in  { border-radius:11px 11px 0 0!important; }
+.leaflet-control-zoom-out { border-radius:0 0 11px 11px!important; }
+.leaflet-control-attribution {
+  background:rgba(240,245,255,0.80)!important; backdrop-filter:blur(12px)!important;
+  color:var(--t3)!important; font-size:8.5px!important;
+  border-radius:8px!important; border:1px solid var(--b1)!important;
+  margin-bottom:62px!important;
+}
+.leaflet-control-attribution a { color:var(--blue)!important; opacity:.8; }
+.leaflet-popup-content-wrapper {
+  background:rgba(240,246,255,0.94); backdrop-filter:var(--blur-lg);
+  color:var(--t1); border:1px solid var(--b2); border-radius:14px;
+  box-shadow:0 16px 48px rgba(80,110,160,0.20), inset 0 1px 0 rgba(255,255,255,0.95);
+}
+.leaflet-popup-tip { background:rgba(240,246,255,0.94); }
+
+/* ════════════════════════════════════════════
+   PANEL TOGGLE
+   ════════════════════════════════════════════ */
+#left-panel.panel-hidden,
+#right-panel.panel-hidden {
+  display: none !important;
+}
+.map-btn.active-btn {
+  background: var(--sun-dim) !important;
+  border-color: rgba(232,130,12,0.40) !important;
+  color: var(--sun) !important;
+}
+
+/* ════════════════════════════════════════════
+   PEAKFINDER — inline sobre el mapa
+   ════════════════════════════════════════════ */
+#peakfinder-panel {
+  display: none;
+  position: absolute; inset: 0; z-index: 800;
+  flex-direction: column;
+  background: var(--bg);
+}
+#peakfinder-panel.pf-open { display: flex; }
+#peakfinder-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg-timeline);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-bottom: 1px solid var(--b1);
+  flex-shrink: 0;
+}
+#peakfinder-title {
+  font-size: 12px; font-weight: 600; color: var(--t1);
+  display: flex; align-items: center; gap: 8px;
+}
+#pf-coords-label { color: var(--blue); font-size: 11px; font-weight: 400; }
+#peakfinder-close {
+  height: 28px; padding: 0 12px; border-radius: 8px;
+  background: var(--bg-btn); border: 1px solid var(--b1);
+  box-shadow: var(--sh-btn);
+  color: var(--t2); font-size: 11px; font-family: inherit;
+  font-weight: 500; cursor: pointer;
+  display: flex; align-items: center; gap: 5px;
+  transition: all .18s;
+}
+#peakfinder-close:hover { background: rgba(224,84,76,0.10); border-color: rgba(224,84,76,0.35); color: var(--red); }
+#peakfinder-iframe-wrap { flex: 1; width: 100%; }
+#peakfinder-iframe-wrap iframe { display: block; width: 100%; height: 100%; border: none; }
+
+/* ════════════════════════════════════════════
+   MOBILE — Responsive layout
+   Strategy: tabbar fixed at bottom, drawer fixed
+   above tabbar, timeline padding-based (not bottom)
+   ════════════════════════════════════════════ */
+
+/* Tab bar — always visible at bottom */
+#mobile-tabbar {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 2500;
+  background: var(--bg-header);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-top: 1px solid var(--b1);
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.85), 0 -8px 24px rgba(80,110,160,0.10);
+  padding: 6px 8px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  gap: 2px;
+  justify-content: space-around;
+  align-items: stretch;
+}
+.tab-btn {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px; padding: 6px 4px;
+  border-radius: 12px; border: none;
+  background: transparent; cursor: pointer;
+  color: var(--t3); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.3px; font-family: inherit;
+  transition: all .2s; text-transform: uppercase;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px;
+}
+.tab-btn svg {
+  width: 20px; height: 20px; stroke: currentColor;
+  fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.tab-btn.tab-active { background: var(--sun-dim); color: var(--sun); }
+
+/* Drawer — slides up from above the tabbar */
+#mobile-bottom-drawer {
+  display: none;
+  position: fixed;
+  left: 0; right: 0;
+  z-index: 2400;
+  background: var(--bg-panel);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-top: 1px solid var(--b1);
+  box-shadow: 0 -8px 32px rgba(80,110,160,0.15), inset 0 1px 0 rgba(255,255,255,0.80);
+  border-radius: 20px 20px 0 0;
+  max-height: 58vh;
+  transform: translateY(110%);
+  transition: transform .32s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+  flex-direction: column;
+}
+#mobile-bottom-drawer.drawer-open { transform: translateY(0); }
+
+#drawer-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--b2);
+}
+#drawer-content {
+  overflow-y: auto; flex: 1;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px;
+}
+
+/* ── Mobile breakpoint ── */
+@media (max-width: 700px) {
+  :root { --header-h: 48px; }
+
+  #header { padding: 0 10px; gap: 8px; }
+  #search-wrap { max-width: none; flex: 1; }
+  #header-info { display: none; }
+  #left-panel, #right-panel { display: none !important; }
+  #main { flex-direction: column; }
+  #map-container { flex: 1; }
+  #mobile-tabbar { display: flex; }
+  #mobile-bottom-drawer { display: flex; }
+
+  /* Tabbar height: 44px min-height + 8px top pad + 8px bottom pad + safe area.
+     We use 64px as a safe base before safe-area kicks in. */
+  #mobile-bottom-drawer {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Timeline: fixed to viewport, sits above tabbar */
+  #map-timeline-bar {
+    position: fixed;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    left: 0; right: 0;
+    padding: 8px 10px 6px;
+    z-index: 2000;
+  }
+
+  /* Map overlay buttons */
+  #map-overlay { bottom: 140px; right: 10px; }
+  .map-btn { width: 34px; height: 34px; border-radius: 10px; font-size: 14px; }
+  #coords-display { font-size: 9.5px; padding: 4px 10px; }
+
+  .leaflet-control-attribution {
+    margin-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Drawer content */
+  #drawer-content .section { padding: 14px 16px; }
+  #drawer-content .section-title { font-size: 9.5px; }
+  #drawer-content #sun-grid { grid-template-columns: 1fr 1fr 1fr; }
+  #drawer-content .sun-card-value { font-size: 14px; }
+  #drawer-content #time-btn-row { gap: 5px; }
+  #drawer-content .tmbtn { padding: 7px 3px; font-size: 9px; border-radius: 9px; }
+  #drawer-content #time-display { font-size: 32px; }
+  #logo svg { height: 28px; }
+}
+
+@media (max-width: 380px) {
+  #drawer-content #sun-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<!-- Hidden SVG defs for gradients used in canvas/logo -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="sungrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff9f0a"/>
+      <stop offset="100%" stop-color="#ff6b00"/>
+    </linearGradient>
+  </defs>
+</svg>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div id="logo">
+      <svg viewBox="0 0 160 40" height="34" fill="none" xmlns="http://www.w3.org/2000/svg" style="-webkit-text-fill-color:initial;filter:none;">
+        <!-- Círculo naranja (sol parcialmente oculto) -->
+        <circle cx="18" cy="20" r="14" fill="#f5a623"/>
+        <!-- Círculo azul marino (luna eclipsando) -->
+        <circle cx="24" cy="20" r="14" fill="#1a3a6a"/>
+        <!-- Letra S blanca centrada en el círculo azul -->
+        <text x="24" y="25.5" font-family="'Outfit',system-ui,sans-serif" font-size="15" font-weight="700" fill="white" text-anchor="middle">S</text>
+        <!-- Texto "olarmap.app" (la S está en el círculo) -->
+        <text x="43" y="25.5" font-family="'Outfit',system-ui,sans-serif" font-size="16" font-weight="600" letter-spacing="-0.3"><tspan fill="#1a2236">solarm</tspan><tspan dx="0" fill="#8bafc8">.app</tspan></text>
+      </svg>
+    </div>
+    <div id="search-wrap">
+      <input type="text" id="search" placeholder="Buscar lugar... (Enter)">
+      <button id="search-btn" onclick="doSearch()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </div>
+    <div id="header-info">
+      <div class="hpill">Lat: <span id="h-lat">43.3183°</span></div>
+      <div class="hpill">Lon: <span id="h-lon">-1.9812°</span></div>
+      <div class="hpill">Alt. solar: <span id="h-alt">—</span></div>
+      <div class="hpill">Azimut ☀: <span id="h-az">—</span></div>
+      <div class="hpill">🌙 Alt: <span id="h-moon-alt">—</span></div>
+      <div class="hpill">🌙 Az: <span id="h-moon-az">—</span></div>
+      <div class="hpill" id="h-phase-pill">Fase: <span id="h-phase">—</span></div>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <!-- LEFT PANEL -->
+    <div id="left-panel">
+
+      <div class="section">
+        <div class="section-title">Fecha y Hora</div>
+        <div id="dt-grid">
+          <input type="date" class="dt-input" id="date-input">
+          <input type="time" class="dt-input" id="time-input">
+        </div>
+        <div id="time-slider-wrap">
+          <input type="range" id="time-slider" min="0" max="1440" value="720" step="1">
+          <div id="time-display">12:00</div>
+          <div id="time-btn-row">
+            <div class="tmbtn" onclick="setPreset('nightEnd')">Alba astro.</div>
+            <div class="tmbtn" onclick="setPreset('sunrise')">Amanecer</div>
+            <div class="tmbtn" onclick="setPreset('goldenAM')">Dorada ☀</div>
+            <div class="tmbtn" onclick="setPreset('noon')">Mediodía</div>
+            <div class="tmbtn" onclick="setPreset('goldenPM')">Dorada 🌅</div>
+            <div class="tmbtn" onclick="setPreset('sunset')">Puesta</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Posición Solar</div>
+        <div id="sun-grid">
+          <div class="sun-card"><div class="sun-card-label">Altitud</div><div class="sun-card-value gold" id="sc-alt">—</div></div>
+          <div class="sun-card"><div class="sun-card-label">Azimut</div><div class="sun-card-value gold" id="sc-az">—</div></div>
+          <div class="sun-card"><div class="sun-card-label">Amanecer</div><div class="sun-card-value green" id="sc-rise">—</div></div>
+          <div class="sun-card"><div class="sun-card-label">Puesta de sol</div><div class="sun-card-value red" id="sc-set">—</div></div>
+          <div class="sun-card"><div class="sun-card-label">Mediodía solar</div><div class="sun-card-value blue" id="sc-noon">—</div></div>
+          <div class="sun-card"><div class="sun-card-label">Duración del día</div><div class="sun-card-value" id="sc-dur">—</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Trayectoria Solar del Día</div>
+        <canvas id="sun-path-canvas" width="260" height="175"></canvas>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Animación del Día</div>
+        <div id="anim-row">
+          <label class="toggle-wrap">
+            <span class="toggle">
+              <input type="checkbox" id="anim-toggle" onchange="toggleAnim()">
+              <span class="slider-tog"></span>
+            </span>
+            Animar
+          </label>
+          <select class="speed-select" id="anim-speed">
+            <option value="1">1× real</option>
+            <option value="4">4× rápido</option>
+            <option value="8" selected>8× normal</option>
+            <option value="30">30× rápido</option>
+            <option value="60">60× ultra</option>
+            <option value="120">120× máx</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Ubicación Seleccionada</div>
+        <div id="loc-info">
+          Haz clic en el mapa para seleccionar cualquier punto del mundo.<br>
+          <strong id="loc-name" style="color:var(--text)">Donostia – San Sebastián</strong><br>
+          <span class="coord" id="loc-coords">43.3183° N, 1.9812° W</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- MAP -->
+    <div id="map-container">
+      <div id="map"></div>
+      <canvas id="shadow-canvas"></canvas>
+
+      <!-- PEAKFINDER — reemplaza el mapa inline -->
+      <div id="peakfinder-panel">
+        <div id="peakfinder-bar">
+          <div id="peakfinder-title">
+            ⛰️ PeakFinder — Panorámica de montañas &nbsp;
+            <span id="pf-coords-label"></span>
+            <a id="pf-date-link" href="#" target="_blank" rel="noopener"
+               title="Abrir en PeakFinder.com para ajustar la fecha/hora manualmente"
+               style="margin-left:8px;font-size:10px;color:var(--sun);opacity:0.85;white-space:nowrap;text-decoration:none;border:1px solid rgba(245,166,35,0.35);border-radius:6px;padding:2px 7px;">
+              📅 <span id="pf-date-label"></span> — Ajustar fecha ↗
+            </a>
+          </div>
+          <button id="peakfinder-close" onclick="closePeakFinder()">✕ Volver al mapa</button>
+        </div>
+        <div id="peakfinder-iframe-wrap"><iframe id="peakfinder-iframe" src="" allow="geolocation"></iframe></div>
+      </div>
+      <!-- TIMELINE BAR at bottom of map -->
+      <div id="map-timeline-bar">
+        <div id="map-timeline-inner">
+          <canvas id="timeline-canvas" width="800" height="44"></canvas>
+          <div id="timeline-labels">
+            <span>00:00</span><span>03:00</span><span>06:00</span><span>09:00</span>
+            <span>12:00</span><span>15:00</span><span>18:00</span><span>21:00</span><span>24:00</span>
+          </div>
+        </div>
+      </div>
+      <div id="map-overlay">
+        <div id="coords-display">Mueve el ratón sobre el mapa</div>
+        <div class="map-btn" onclick="locateMe()" title="Mi ubicación">📍</div>
+        <div class="map-btn" onclick="cycleMapLayer()" title="Cambiar capa de mapa">🗺️</div>
+        <div class="map-btn" onclick="togglePanels()" title="Ocultar/mostrar paneles" id="panels-toggle-btn" style="font-size:16px;">⇔</div>
+        <div class="map-btn" onclick="openPeakFinder()" title="Ver panorámica de montañas" style="font-size:15px; cursor:pointer;">⛰️</div>
+        <div class="map-btn" onclick="toggleShadeMap()" title="Sombras de terreno (ShadeMap)" id="shademap-btn" style="font-size:12px; letter-spacing:-0.3px;">🌑 DEM</div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="right-panel">
+
+      <div class="section">
+        <div class="section-title">Fases del Día</div>
+        <div id="phases-list"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Rosa de Azimut / Brújula</div>
+        <div id="azimuth-wrap">
+          <canvas id="azimuth-canvas" width="200" height="200"></canvas>
+          <div id="azimuth-info">—</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Datos del Fotógrafo</div>
+        <div id="stats-list">
+          <div class="stat-row"><span class="stat-key">Hora dorada mañana</span><span class="stat-val" id="st-gam">—</span></div>
+          <div class="stat-row"><span class="stat-key">Hora dorada tarde</span><span class="stat-val" id="st-gpm">—</span></div>
+          <div class="stat-row"><span class="stat-key">Hora azul amanecer</span><span class="stat-val" id="st-bam">—</span></div>
+          <div class="stat-row"><span class="stat-key">Hora azul anochecer</span><span class="stat-val" id="st-bpm">—</span></div>
+          <div class="stat-row"><span class="stat-key">Crepúsculo civil</span><span class="stat-val" id="st-civil">—</span></div>
+          <div class="stat-row"><span class="stat-key">Crepúsculo náutico</span><span class="stat-val" id="st-naut">—</span></div>
+          <div class="stat-row"><span class="stat-key">Noche astronómica</span><span class="stat-val" id="st-astro">—</span></div>
+          <div class="stat-row"><span class="stat-key">Longitud sombra (1m)</span><span class="stat-val" id="st-shadow">—</span></div>
+          <div class="stat-row"><span class="stat-key">Ángulo zenital</span><span class="stat-val" id="st-zen">—</span></div>
+          <div class="stat-row"><span class="stat-key">Irradiancia rel.</span><span class="stat-val" id="st-irr">—</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Analema Anual (misma hora)</div>
+        <canvas id="year-canvas" width="202" height="155"></canvas>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       MOBILE — Tab bar + Bottom Drawer
+       ══════════════════════════════════════ -->
+  <nav id="mobile-tabbar">
+    <button class="tab-btn tab-active" data-tab="solar" onclick="switchTab('solar')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>
+      Solar
+    </button>
+    <button class="tab-btn" data-tab="time" onclick="switchTab('time')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Hora
+    </button>
+    <button class="tab-btn" data-tab="fases" onclick="switchTab('fases')">
+      <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      Fases
+    </button>
+    <button class="tab-btn" data-tab="brujula" onclick="switchTab('brujula')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+      Brújula
+    </button>
+    <button class="tab-btn" data-tab="foto" onclick="switchTab('foto')">
+      <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Foto
+    </button>
+  </nav>
+
+  <div id="mobile-bottom-drawer">
+    <div id="drawer-handle-wrap" onclick="toggleDrawer()" style="display:flex;flex-direction:column;align-items:center;padding:8px 0 4px;cursor:pointer;flex-shrink:0;gap:2px;">
+      <div id="drawer-handle"></div>
+      <span style="font-size:9px;font-weight:500;color:var(--t3);letter-spacing:0.4px;text-transform:uppercase;font-family:'Outfit',sans-serif;">cerrar</span>
+    </div>
+    <div id="drawer-content">
+      <!-- Tab: Solar -->
+      <div id="tab-solar" class="drawer-tab">
+        <div class="section">
+          <div class="section-title">Posición Solar</div>
+          <div id="sun-grid-mobile" class="sun-grid-m"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">Trayectoria del Día</div>
+          <canvas id="sun-path-canvas-m" width="340" height="160" style="width:100%;border-radius:10px;display:block;box-shadow:0 0 0 1px var(--b1),0 4px 14px rgba(80,110,160,0.12);"></canvas>
+        </div>
+      </div>
+      <!-- Tab: Hora -->
+      <div id="tab-time" class="drawer-tab" style="display:none">
+        <div class="section">
+          <div class="section-title">Fecha y Hora</div>
+          <div id="dt-grid-m" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <input type="date" class="dt-input" id="date-input-m">
+            <input type="time" class="dt-input" id="time-input-m">
+          </div>
+          <div style="margin-top:12px">
+            <input type="range" id="time-slider-m" min="0" max="1440" value="720" step="1" style="width:100%;height:3px;border-radius:2px;cursor:grab;accent-color:var(--sun);background:rgba(100,130,180,0.15);appearance:none;-webkit-appearance:none;">
+            <div id="time-display-m" style="text-align:center;font-size:28px;font-weight:700;letter-spacing:3px;margin:9px 0 0;font-variant-numeric:tabular-nums;font-family:'DM Mono',monospace;background:linear-gradient(135deg,#e8820c 0%,#f5b840 50%,#c96000 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">12:00</div>
+          </div>
+          <div style="display:flex;gap:5px;margin-top:10px;flex-wrap:wrap;">
+            <div class="tmbtn" onclick="setPreset('nightEnd')">Alba astro.</div>
+            <div class="tmbtn" onclick="setPreset('sunrise')">Amanecer</div>
+            <div class="tmbtn" onclick="setPreset('goldenAM')">Dorada ☀</div>
+            <div class="tmbtn" onclick="setPreset('noon')">Mediodía</div>
+            <div class="tmbtn" onclick="setPreset('goldenPM')">Dorada 🌅</div>
+            <div class="tmbtn" onclick="setPreset('sunset')">Puesta</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">Animación</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label class="toggle-wrap">
+              <span class="toggle">
+                <input type="checkbox" id="anim-toggle-m" onchange="toggleAnim()">
+                <span class="slider-tog"></span>
+              </span>
+              Animar
+            </label>
+            <select class="speed-select" id="anim-speed-m">
+              <option value="1">1× real</option>
+              <option value="4">4× rápido</option>
+              <option value="8" selected>8× normal</option>
+              <option value="30">30× rápido</option>
+              <option value="60">60× ultra</option>
+              <option value="120">120× máx</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <!-- Tab: Fases -->
+      <div id="tab-fases" class="drawer-tab" style="display:none">
+        <div class="section">
+          <div class="section-title">Fases del Día</div>
+          <div id="phases-list-m"></div>
+        </div>
+      </div>
+      <!-- Tab: Brújula -->
+      <div id="tab-brujula" class="drawer-tab" style="display:none">
+        <div class="section">
+          <div class="section-title">Rosa de Azimut</div>
+          <div id="azimuth-wrap-m" style="display:flex;flex-direction:column;align-items:center;gap:7px;">
+            <canvas id="azimuth-canvas-m" width="200" height="200"></canvas>
+            <div id="azimuth-info-m" style="font-size:10.5px;color:var(--t2);text-align:center;line-height:1.9;font-family:'DM Mono',monospace;">—</div>
+          </div>
+        </div>
+      </div>
+      <!-- Tab: Foto -->
+      <div id="tab-foto" class="drawer-tab" style="display:none">
+        <div class="section">
+          <div class="section-title">Datos del Fotógrafo</div>
+          <div id="stats-list-m"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">Ubicación</div>
+          <div id="loc-info-m" style="font-size:11.5px;color:var(--t2);line-height:1.75;">
+            Toca el mapa para seleccionar ubicación.<br>
+            <strong id="loc-name-m" style="color:var(--t1)">Donostia – San Sebastián</strong><br>
+            <span class="coord" id="loc-coords-m">43.3183° N, 1.9812° W</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const DEG = Math.PI / 180;
+let lat = 43.3183, lon = -1.9812;
+let currentDate = new Date();
+let animRunning = false, animFrame = null, animLastTime = null;
+let map, markerEl, mapMarker;
+let mapLayers = [], currentLayerIdx = 0;
+let showShadow = true;
+let shadeMapLayer = null, shadeMapActive = false;
+const SHADEMAP_API_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6Imx1aXNuaWFuQGdtYWlsLmNvbSIsImNyZWF0ZWQiOjE3Nzc0NDc5NTkwMTEsImlhdCI6MTc3NzQ0Nzk1OX0.4a9NuFd44nhm9oaDfnITCdf3ZR1g_Km5kjWZWzeQEU8';
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function pad(n) { return String(Math.floor(n)).padStart(2,'0'); }
+function fmtTime(d) { if(!d||isNaN(d.getTime())) return '—'; return pad(d.getHours())+':'+pad(d.getMinutes()); }
+function fmtDuration(ms) {
+  if(!ms||ms<=0) return '—';
+  const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
+  return h+'h '+pad(m)+'m';
+}
+function rad2deg(r) { return r/DEG; }
+function sunAz(pos) { return (rad2deg(pos.azimuth)+180+360)%360; }
+function sunAlt(pos) { return rad2deg(pos.altitude); }
+
+// ─── MAP INIT ────────────────────────────────────────────────────────────────
+function initMap() {
+  // Tiles que funcionan sin Referer (autoalojamiento / archivo local)
+  mapLayers = [
+    L.tileLayer('https://tile.openstreetmap.bzh/br/{z}/{x}/{y}.png',{
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom:19, crossOrigin:true
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+      attribution:'© Esri World Imagery',maxZoom:19
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{
+      attribution:'© Esri World Topo',maxZoom:19
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{
+      attribution:'© Esri Dark Gray',maxZoom:16
+    })
+  ];
+  map = L.map('map',{center:[lat,lon],zoom:13,layers:[mapLayers[0]]});
+  mapMarker = L.marker([lat,lon],{
+    icon: L.divIcon({
+      className:'',
+      html:'<div style="width:18px;height:18px;background:#f0a500;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,0.6);cursor:pointer;"></div>',
+      iconSize:[18,18],iconAnchor:[9,9]
+    })
+  }).addTo(map);
+  map.on('click', e => { lat=e.latlng.lat; lon=e.latlng.lng; onLocationChange(); });
+  map.on('mousemove', e => {
+    document.getElementById('coords-display').textContent =
+      e.latlng.lat.toFixed(5)+'°, '+e.latlng.lng.toFixed(5)+'°';
+  });
+  map.on('moveend zoomend resize', () => {
+    resizeShadowCanvas();
+    update();
+  });
+
+  // Timeline — drag + zoom para ajuste fino
+  const tlCanvas = document.getElementById('timeline-canvas');
+  let tlDragging = false;
+  let tlZoom = 1;       // 1 = vista completa 24h, >1 = ampliado
+  let tlOffset = 0;     // fracción [0,1] del inicio de la ventana visible
+
+  function tlFracToMins(frac) {
+    // Convierte fracción de canvas a minutos según zoom/offset actuales
+    return Math.round((tlOffset + frac / tlZoom) * 1440);
+  }
+
+  function tlScrub(e) {
+    const rect = tlCanvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const mins = Math.max(0, Math.min(1440, tlFracToMins(frac)));
+    const h = Math.floor(mins/60), m = mins%60;
+    const d = getDatetime(); d.setHours(h,m,0,0);
+    currentDate = d; setDatetimeInputs(currentDate); update();
+  }
+
+  function tlApplyZoom(delta, pivotFrac) {
+    // delta>0 = acercar, delta<0 = alejar
+    const oldZoom = tlZoom;
+    tlZoom = Math.max(1, Math.min(24, tlZoom * (delta > 0 ? 1.25 : 0.8)));
+    // Mantener el punto bajo el cursor estático
+    const pivotTime = tlOffset + pivotFrac / oldZoom;
+    tlOffset = Math.max(0, Math.min(1 - 1/tlZoom, pivotTime - pivotFrac / tlZoom));
+    drawTimeline(currentDate, null); // redibuja solo el timeline
+    update();
+  }
+
+  tlCanvas.addEventListener('mousedown',  e => { tlDragging=true; tlCanvas.style.cursor='grabbing'; tlScrub(e); });
+  tlCanvas.addEventListener('touchstart', e => { tlDragging=true; tlScrub(e); e.preventDefault(); }, {passive:false});
+  window.addEventListener('mousemove',  e => { if(tlDragging) tlScrub(e); });
+  window.addEventListener('touchmove',  e => { if(tlDragging) tlScrub(e); }, {passive:false});
+  window.addEventListener('mouseup',   () => { tlDragging=false; tlCanvas.style.cursor='grab'; });
+  window.addEventListener('touchend',  () => { tlDragging=false; });
+
+  // Scroll sobre el timeline → zoom
+  tlCanvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = tlCanvas.getBoundingClientRect();
+    const pivotFrac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    tlApplyZoom(-e.deltaY, pivotFrac);
+  }, {passive:false});
+
+  // Doble clic → reset zoom
+  tlCanvas.addEventListener('dblclick', () => {
+    tlZoom = 1; tlOffset = 0;
+    update();
+  });
+
+  // Exponer zoom/offset para que drawTimeline los use
+  window._tlZoom   = () => tlZoom;
+  window._tlOffset = () => tlOffset;
+}
+
+function cycleMapLayer() {
+  map.removeLayer(mapLayers[currentLayerIdx]);
+  currentLayerIdx = (currentLayerIdx+1)%mapLayers.length;
+  map.addLayer(mapLayers[currentLayerIdx]);
+}
+
+function toggleShadow() {
+  showShadow = !showShadow;
+  document.getElementById('shadow-toggle-btn').style.opacity = showShadow ? '1' : '0.4';
+  update();
+}
+
+// ─── SHADEMAP TERRAIN LAYER ──────────────────────────────────────────────────
+function shadeMapGetCanvas() {
+  return Array.from(document.querySelectorAll('#map canvas'))
+    .filter(c => c.id !== 'shadow-canvas');
+}
+
+function toggleShadeMap() {
+  const btn = document.getElementById('shademap-btn');
+  if (shadeMapActive) {
+    shadeMapGetCanvas().forEach(c => { c.style.display = 'none'; });
+    shadeMapActive = false;
+    btn.classList.remove('active-btn');
+    btn.title = 'Activar sombras de terreno (ShadeMap)';
+  } else {
+    if (!shadeMapLayer) {
+      shadeMapLayer = L.shadeMap({
+        date: currentDate,
+        color: '#01112f',
+        opacity: 0.7,
+        apiKey: SHADEMAP_API_KEY,
+        terrainSource: {
+          tileSize: 256,
+          maxZoom: 15,
+          getSourceUrl: ({ x, y, z }) =>
+            `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,
+          getElevation: ({ r, g, b }) => (r * 256 + g + b / 256) - 32768
+        }
+      }).addTo(map);
+    } else {
+      shadeMapGetCanvas().forEach(c => { c.style.display = ''; });
+      shadeMapLayer.setDate(currentDate);
+    }
+    shadeMapActive = true;
+    btn.classList.add('active-btn');
+    btn.title = 'Desactivar sombras de terreno (ShadeMap)';
+  }
+}
+
+function resizeShadowCanvas() {
+  const c = document.getElementById('shadow-canvas');
+  const cont = document.getElementById('map-container');
+  c.width = cont.offsetWidth;
+  c.height = cont.offsetHeight;
+  // Resize timeline canvas too
+  const tc = document.getElementById('timeline-canvas');
+  const bar = document.getElementById('map-timeline-inner');
+  if(bar) tc.width = bar.offsetWidth;
+}
+
+// ─── LOCATION ────────────────────────────────────────────────────────────────
+function onLocationChange() {
+  mapMarker.setLatLng([lat,lon]);
+  document.getElementById('h-lat').textContent = lat.toFixed(4)+'°';
+  document.getElementById('h-lon').textContent = lon.toFixed(4)+'°';
+  document.getElementById('loc-coords').textContent =
+    Math.abs(lat).toFixed(4)+'° '+(lat>=0?'N':'S')+', '+
+    Math.abs(lon).toFixed(4)+'° '+(lon>=0?'E':'W');
+  reverseGeocode(lat,lon);
+  update();
+}
+
+async function reverseGeocode(la,lo) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${la}&lon=${lo}&format=json`);
+    const d = await r.json();
+    const name = d.address?.city||d.address?.town||d.address?.village||
+                 d.address?.municipality||d.address?.county||
+                 (d.display_name||'').split(',')[0]||'Ubicación seleccionada';
+    document.getElementById('loc-name').textContent = name;
+  } catch(e) {
+    document.getElementById('loc-name').textContent = 'Ubicación seleccionada';
+  }
+}
+
+async function doSearch() {
+  const q = document.getElementById('search').value.trim();
+  if(!q) return;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
+    const d = await r.json();
+    if(d.length) {
+      lat = parseFloat(d[0].lat); lon = parseFloat(d[0].lon);
+      map.setView([lat,lon],13);
+      onLocationChange();
+    }
+  } catch(e) { alert('Error al buscar. Comprueba tu conexión.'); }
+}
+document.getElementById('search').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+
+function locateMe() {
+  if(navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => { lat=pos.coords.latitude; lon=pos.coords.longitude; map.setView([lat,lon],14); onLocationChange(); },
+      () => alert('No se pudo obtener la ubicación.')
+    );
+  }
+}
+
+// ─── DATE/TIME CONTROLS ──────────────────────────────────────────────────────
+function getDatetime() {
+  const dv = document.getElementById('date-input').value;
+  const tv = document.getElementById('time-input').value;
+  if(dv&&tv) {
+    const [y,m,d] = dv.split('-').map(Number);
+    const [h,mi] = tv.split(':').map(Number);
+    return new Date(y,m-1,d,h,mi,0,0);
+  }
+  return new Date();
+}
+
+function setDatetimeInputs(d) {
+  document.getElementById('date-input').value =
+    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.getElementById('time-input').value =
+    `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const mins = d.getHours()*60+d.getMinutes();
+  document.getElementById('time-slider').value = mins;
+  document.getElementById('time-display').textContent = pad(d.getHours())+':'+pad(d.getMinutes());
+}
+
+function setPreset(p) {
+  const d = getDatetime();
+  const base = new Date(d.getFullYear(),d.getMonth(),d.getDate(),12);
+  const times = SunCalc.getTimes(base,lat,lon);
+  document.querySelectorAll('.tmbtn').forEach(b=>b.classList.remove('active'));
+  const map_p = {
+    'sunrise':times.sunrise, 'sunset':times.sunset, 'noon':times.solarNoon,
+    'goldenAM':times.goldenHourEnd, 'goldenPM':times.goldenHour, 'nightEnd':times.nightEnd
+  };
+  const target = map_p[p];
+  if(target&&!isNaN(target.getTime())) {
+    currentDate = new Date(target);
+    setDatetimeInputs(currentDate);
+    update();
+  }
+  event.target.classList.add('active');
+}
+
+document.getElementById('time-slider').addEventListener('input', function() {
+  const v = parseInt(this.value);
+  const h=Math.floor(v/60), m=v%60;
+  document.getElementById('time-display').textContent = pad(h)+':'+pad(m);
+  document.getElementById('time-input').value = `${pad(h)}:${pad(m)}`;
+  const d = getDatetime(); d.setHours(h,m,0,0);
+  currentDate = d;
+  update();
+});
+document.getElementById('date-input').addEventListener('change', () => { currentDate=getDatetime(); update(); });
+document.getElementById('time-input').addEventListener('change', () => {
+  currentDate = getDatetime();
+  const v = currentDate.getHours()*60+currentDate.getMinutes();
+  document.getElementById('time-slider').value = v;
+  document.getElementById('time-display').textContent = pad(currentDate.getHours())+':'+pad(currentDate.getMinutes());
+  update();
+});
+
+// ─── ANIMATION ───────────────────────────────────────────────────────────────
+function toggleAnim() {
+  animRunning = document.getElementById('anim-toggle').checked;
+  if(animRunning) { animLastTime=null; animFrame=requestAnimationFrame(animStep); }
+  else if(animFrame) { cancelAnimationFrame(animFrame); animFrame=null; }
+}
+
+function animStep(ts) {
+  if(!animRunning) return;
+  if(animLastTime===null) animLastTime=ts;
+  const elapsed = ts-animLastTime; animLastTime=ts;
+  const speed = parseInt(document.getElementById('anim-speed').value);
+  const msPerFrame = elapsed*speed*60;
+  currentDate = new Date(currentDate.getTime()+msPerFrame);
+  const base = new Date(currentDate.getFullYear(),currentDate.getMonth(),currentDate.getDate());
+  if(currentDate.getTime()-base.getTime()>=86400000) {
+    currentDate = new Date(base.getTime());
+  }
+  setDatetimeInputs(currentDate);
+  update();
+  animFrame = requestAnimationFrame(animStep);
+}
+
+// ─── MAIN UPDATE ─────────────────────────────────────────────────────────────
+function update() {
+  const d = currentDate;
+  const pos = SunCalc.getPosition(d,lat,lon);
+  const times = SunCalc.getTimes(d,lat,lon);
+  const altDeg = sunAlt(pos);
+  const azDeg = sunAz(pos);
+
+  // Moon
+  const moonPos = SunCalc.getMoonPosition(d,lat,lon);
+  const moonAlt = rad2deg(moonPos.altitude);
+  const moonAz = (rad2deg(moonPos.azimuth)+180+360)%360;
+  const moonIllum = SunCalc.getMoonIllumination(d);
+  const moonPct = (moonIllum.fraction*100).toFixed(0);
+
+  // Header
+  document.getElementById('h-alt').textContent = altDeg.toFixed(1)+'°';
+  document.getElementById('h-az').textContent = azDeg.toFixed(1)+'°';
+  document.getElementById('h-moon-alt').textContent = moonAlt.toFixed(1)+'°';
+  document.getElementById('h-moon-az').textContent = moonAz.toFixed(1)+'°';
+
+  // Sun cards
+  document.getElementById('sc-alt').textContent = altDeg.toFixed(2)+'°';
+  document.getElementById('sc-az').textContent = azDeg.toFixed(1)+'°';
+  document.getElementById('sc-rise').textContent = fmtTime(times.sunrise);
+  document.getElementById('sc-set').textContent = fmtTime(times.sunset);
+  document.getElementById('sc-noon').textContent = fmtTime(times.solarNoon);
+  const dur = times.sunset&&times.sunrise ? times.sunset.getTime()-times.sunrise.getTime() : 0;
+  document.getElementById('sc-dur').textContent = fmtDuration(dur);
+
+  // Stats
+  document.getElementById('st-gam').textContent =
+    fmtTime(times.sunrise)+' – '+fmtTime(times.goldenHourEnd);
+  document.getElementById('st-gpm').textContent =
+    fmtTime(times.goldenHour)+' – '+fmtTime(times.sunset);
+  document.getElementById('st-bam').textContent =
+    fmtTime(times.nauticalDawn)+' – '+fmtTime(times.dawn);
+  document.getElementById('st-bpm').textContent =
+    fmtTime(times.dusk)+' – '+fmtTime(times.nauticalDusk);
+  document.getElementById('st-civil').textContent =
+    fmtTime(times.dawn)+' / '+fmtTime(times.dusk);
+  document.getElementById('st-naut').textContent =
+    fmtTime(times.nauticalDawn)+' / '+fmtTime(times.nauticalDusk);
+  document.getElementById('st-astro').textContent =
+    fmtTime(times.nightEnd)+' / '+fmtTime(times.night);
+
+  const shadowLen = altDeg>0.5 ? (1/Math.tan(altDeg*DEG)).toFixed(2)+'m' : '∞ (bajo horizonte)';
+  document.getElementById('st-shadow').textContent = shadowLen;
+  document.getElementById('st-zen').textContent = (90-altDeg).toFixed(2)+'°';
+  const irr = altDeg>0 ? (Math.sin(altDeg*DEG)*100).toFixed(1)+'%' : '0%';
+  document.getElementById('st-irr').textContent = irr;
+
+  // Draw all
+  drawSunPath(d,altDeg,azDeg,times);
+  drawTimeline(d,times);
+  drawCompass(azDeg,altDeg);
+  drawShadowRay(azDeg,altDeg,moonAz,moonAlt,moonPct,times);
+  drawYearAnalemma(d);
+  updatePhases(d,times);
+
+  // Sincronizar ShadeMap con la fecha/hora actual
+  if (shadeMapLayer && shadeMapActive) {
+    shadeMapLayer.setDate(d);
+  }
+
+  // Sync mobile panels
+  if (typeof syncMobileInputs === 'function') syncMobileInputs();
+  if (typeof drawAzimuthMobile === 'function') drawAzimuthMobile(d);
+}
+
+// ─── SUN PATH DIAGRAM ────────────────────────────────────────────────────────
+function drawSunPath(now, altDeg, azDeg, times) {
+  const c = document.getElementById('sun-path-canvas');
+  c.width = c.parentElement.clientWidth - 2;
+  const ctx = c.getContext('2d');
+  const W=c.width, H=c.height;
+  ctx.clearRect(0,0,W,H);
+
+  const PAD_L=32, PAD_R=8, PAD_T=10, PAD_B=18;
+  const cW=W-PAD_L-PAD_R, cH=H-PAD_T-PAD_B;
+
+  ctx.fillStyle='#edf1f8'; ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle='rgba(100,130,180,0.15)'; ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const y=PAD_T+cH-(i/4)*cH;
+    ctx.beginPath();ctx.moveTo(PAD_L,y);ctx.lineTo(W-PAD_R,y);ctx.stroke();
+  }
+  for(let i=0;i<=8;i++){
+    const x=PAD_L+(i/8)*cW;
+    ctx.beginPath();ctx.moveTo(x,PAD_T);ctx.lineTo(x,PAD_T+cH);ctx.stroke();
+  }
+
+  // Axis labels
+  ctx.fillStyle='rgba(80,100,140,0.55)'; ctx.font='9px system-ui';
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  ['0°','22.5°','45°','67.5°','90°'].forEach((l,i)=>{
+    const y=PAD_T+cH-(i/4)*cH; ctx.fillText(l,PAD_L-3,y);
+  });
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  ['N','NE','E','SE','S','SO','O','NO','N'].forEach((l,i)=>{
+    const x=PAD_L+(i/8)*cW; ctx.fillText(l,x,PAD_T+cH+3);
+  });
+
+  // Horizon line
+  ctx.strokeStyle='rgba(100,130,180,0.25)'; ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD_L,PAD_T+cH);ctx.lineTo(W-PAD_R,PAD_T+cH);ctx.stroke();
+
+  const toX = az => PAD_L+((az/360)*cW);
+  const toY = alt => PAD_T+cH-(Math.max(0,alt)/90)*cH;
+
+  // Solstice lines (faint)
+  const yr=now.getFullYear();
+  [[5,21,'rgba(255,120,0,0.12)',`Solsticio verano`],[11,21,'rgba(80,140,255,0.12)','Solsticio invierno']].forEach(([mo,dy,col,lbl])=>{
+    const sd=new Date(yr,mo,dy,12);
+    ctx.beginPath(); let started=false;
+    for(let m=0;m<=1440;m+=6){
+      const t=new Date(sd.getTime()+m*60000);
+      const p=SunCalc.getPosition(t,lat,lon);
+      const a=sunAlt(p),az=sunAz(p);
+      if(a>-6){const x=toX(az),y=toY(a);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}
+    }
+    ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.stroke();
+  });
+
+  // Today's sun path
+  const d0=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  ctx.beginPath(); let started=false;
+  for(let m=0;m<=1440;m+=3){
+    const t=new Date(d0.getTime()+m*60000);
+    const p=SunCalc.getPosition(t,lat,lon);
+    const a=sunAlt(p),az=sunAz(p);
+    if(a>-5){
+      const x=toX(az),y=toY(a);
+      if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+    }
+  }
+  const grad=ctx.createLinearGradient(PAD_L,0,W-PAD_R,0);
+  grad.addColorStop(0,'#e05c00'); grad.addColorStop(0.5,'#f0c040'); grad.addColorStop(1,'#e05c00');
+  ctx.strokeStyle=grad; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Golden hour bands on path
+  [times.sunrise,times.goldenHourEnd,times.goldenHour,times.sunsetStart].forEach((t,i)=>{
+    if(!t||isNaN(t.getTime())) return;
+    const p=SunCalc.getPosition(t,lat,lon);
+    const a=sunAlt(p),az=sunAz(p);
+    if(a>-6){
+      ctx.beginPath();ctx.arc(toX(az),toY(a),3,0,Math.PI*2);
+      ctx.fillStyle=['#e05c00','#f0c040','#f0c040','#e05c00'][i];ctx.fill();
+    }
+  });
+
+  // Current sun position
+  if(altDeg>-5){
+    const sx=toX(azDeg),sy=toY(altDeg);
+    // Glow
+    const glw=ctx.createRadialGradient(sx,sy,0,sx,sy,16);
+    glw.addColorStop(0,'rgba(240,165,0,0.4)'); glw.addColorStop(1,'rgba(240,165,0,0)');
+    ctx.beginPath();ctx.arc(sx,sy,16,0,Math.PI*2);ctx.fillStyle=glw;ctx.fill();
+    // Dot
+    ctx.beginPath();ctx.arc(sx,sy,5,0,Math.PI*2);ctx.fillStyle='#f0a500';ctx.fill();
+    ctx.beginPath();ctx.arc(sx,sy,5,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+  }
+
+  // Legend
+  ctx.font='8px system-ui'; ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillStyle='rgba(180,90,0,0.65)'; ctx.fillText('▪ Solst. verano',PAD_L+2,PAD_T+1);
+  ctx.fillStyle='rgba(44,80,200,0.55)'; ctx.fillText('▪ Solst. invierno',PAD_L+70,PAD_T+1);
+}
+
+// ─── TIMELINE ────────────────────────────────────────────────────────────────
+function drawTimeline(now, times) {
+  const c = document.getElementById('timeline-canvas');
+  const bar = document.getElementById('map-timeline-inner');
+  if(bar) c.width = Math.max(400, bar.offsetWidth);
+  const ctx=c.getContext('2d'); const W=c.width, H=c.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Zoom/offset desde el controlador del timeline
+  const zoom   = window._tlZoom   ? window._tlZoom()   : 1;
+  const offset = window._tlOffset ? window._tlOffset() : 0;
+
+  const midnight0 = new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  const dayMs = 86400000;
+
+  // Convierte tiempo a X en canvas aplicando zoom/offset
+  const toX = t => {
+    const ms = t instanceof Date ? t.getTime() : t;
+    const frac = (ms - midnight0) / dayMs;   // 0..1 dentro del día
+    return ((frac - offset) * zoom) * W;
+  };
+
+  // Rango visible en minutos
+  const visStart = offset * 1440;
+  const visEnd   = Math.min(1440, (offset + 1/zoom) * 1440);
+
+  // Solar phase background
+  const phases=[
+    {s:midnight0,           e:times?.nightEnd,     col:'#080e1a'},
+    {s:times?.nightEnd,     e:times?.nauticalDawn, col:'#0d1830'},
+    {s:times?.nauticalDawn, e:times?.dawn,         col:'#142240'},
+    {s:times?.dawn,         e:times?.sunrise,      col:'#1e3058'},
+    {s:times?.sunrise,      e:times?.goldenHourEnd,col:'#7a3010'},
+    {s:times?.goldenHourEnd,e:times?.solarNoon,    col:'#6a5010'},
+    {s:times?.solarNoon,    e:times?.goldenHour,   col:'rgba(255,210,140,0.45)'},
+    {s:times?.goldenHour,   e:times?.sunsetStart,  col:'rgba(255,170,80,0.50)'},
+    {s:times?.sunsetStart,  e:times?.sunset,       col:'rgba(255,140,60,0.50)'},
+    {s:times?.sunset,       e:times?.dusk,         col:'rgba(180,195,230,0.55)'},
+    {s:times?.dusk,         e:times?.nauticalDusk, col:'rgba(140,160,210,0.55)'},
+    {s:times?.nauticalDusk, e:times?.night,        col:'rgba(100,120,185,0.55)'},
+    {s:times?.night,        e:midnight0+dayMs,     col:'rgba(70,90,160,0.60)'},
+  ];
+  ctx.fillStyle='#d6e0f0'; ctx.fillRect(0,0,W,H);
+  phases.forEach(ph=>{
+    const st = ph.s instanceof Date ? ph.s.getTime() : (typeof ph.s==='number'?ph.s:NaN);
+    const en = ph.e instanceof Date ? ph.e.getTime() : (typeof ph.e==='number'?ph.e:NaN);
+    if(isNaN(st)||isNaN(en)||en<=st) return;
+    const x1=Math.max(0,toX(st)), x2=Math.min(W,toX(en));
+    if(x2>x1){ctx.fillStyle=ph.col; ctx.fillRect(x1,0,x2-x1,H);}
+  });
+
+  // Zoom indicator bar (top 2px)
+  if(zoom > 1) {
+    ctx.fillStyle='rgba(139,175,200,0.25)';
+    ctx.fillRect(0,0,W,2);
+    ctx.fillStyle='rgba(139,175,200,0.7)';
+    ctx.fillRect(offset*zoom*W, 0, W/zoom, 2);
+  }
+
+  // Hour/minute grid lines — densidad adaptada al zoom
+  const gridStep = zoom >= 12 ? 5 : zoom >= 6 ? 10 : zoom >= 3 ? 15 : zoom >= 2 ? 30 : 60; // minutos
+  ctx.lineWidth=0.5;
+  for(let m=0;m<=1440;m+=gridStep){
+    if(m<visStart-gridStep || m>visEnd+gridStep) continue;
+    const x=toX(midnight0+m*60000);
+    ctx.strokeStyle = m%60===0 ? 'rgba(80,110,160,0.18)' : 'rgba(100,130,180,0.08)';
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+  }
+
+  // Moon strip (bottom)
+  const moonStripH=6;
+  for(let m=0;m<1440;m+=5){
+    if(m<visStart-5||m>visEnd+5) continue;
+    const t=new Date(midnight0+m*60000);
+    const mp=SunCalc.getMoonPosition(t,lat,lon);
+    const malt=rad2deg(mp.altitude);
+    if(malt>0){
+      const x=toX(midnight0+m*60000);
+      const alpha=Math.min(1,malt/30)*0.7;
+      ctx.fillStyle=`rgba(200,220,255,${alpha})`;
+      ctx.fillRect(x,H-moonStripH,Math.max(1,W*5/1440*zoom),moonStripH);
+    }
+  }
+
+  // Moon rise/set ticks
+  const moonTimes = SunCalc.getMoonTimes(now,lat,lon);
+  [moonTimes.rise,moonTimes.set].forEach((t,i)=>{
+    if(!t||isNaN(t.getTime())) return;
+    const x=toX(t);
+    if(x<-10||x>W+10) return;
+    ctx.strokeStyle=i===0?'rgba(200,220,255,0.9)':'rgba(160,180,220,0.7)';
+    ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(44,110,189,0.9)'; ctx.font='9px system-ui';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(i===0?'🌙↑':'🌙↓',x,2);
+  });
+
+  // Key sun event ticks
+  if(times) [{t:times.sunrise,c:'#f97316',lbl:'↑'},{t:times.goldenHourEnd,c:'#f0a500'},
+   {t:times.solarNoon,c:'#1a3a6a',lbl:'☀'},{t:times.goldenHour,c:'#f0a500'},
+   {t:times.sunset,c:'#f97316',lbl:'↓'}].forEach(ev=>{
+    if(!ev.t||isNaN(ev.t.getTime())) return;
+    const x=toX(ev.t);
+    if(x<-10||x>W+10) return;
+    ctx.beginPath();ctx.arc(x,H/2-3,3,0,Math.PI*2);ctx.fillStyle=ev.c;ctx.fill();
+  });
+
+  // Hour labels — adaptadas al zoom
+  const labelStep = zoom >= 12 ? 15 : zoom >= 6 ? 30 : zoom >= 3 ? 60 : zoom >= 2 ? 120 : 180; // minutos
+  ctx.font='9px system-ui'; ctx.fillStyle='rgba(50,80,130,0.65)'; ctx.textBaseline='bottom';
+  for(let m=0;m<=1440;m+=labelStep){
+    if(m<visStart-labelStep||m>visEnd+labelStep) continue;
+    const x=toX(midnight0+m*60000);
+    if(x<0||x>W) continue;
+    const h=Math.floor(m/60), mi=m%60;
+    const lbl = zoom>=4 ? `${pad(h)}:${pad(mi)}` : `${h}h`;
+    ctx.textAlign='center';
+    ctx.fillText(lbl, x, H-moonStripH-1);
+  }
+
+  // Current time needle
+  const nowX=toX(now.getTime());
+  if(nowX>=0&&nowX<=W){
+    ctx.strokeStyle='rgba(30,60,100,0.85)'; ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(nowX,0);ctx.lineTo(nowX,H);ctx.stroke();
+    ctx.beginPath();ctx.arc(nowX,H/2-3,4,0,Math.PI*2);
+    ctx.fillStyle='rgba(30,60,100,0.9)';ctx.fill();
+    ctx.fillStyle='rgba(20,50,90,0.85)'; ctx.font='bold 9px system-ui';
+    ctx.textAlign= nowX>W-30 ? 'right':'left';
+    ctx.textBaseline='top';
+    ctx.fillText(pad(now.getHours())+':'+pad(now.getMinutes()), nowX+(nowX>W-30?-4:4), 2);
+  }
+
+  // Zoom level indicator
+  if(zoom>1){
+    ctx.fillStyle='rgba(139,175,200,0.6)'; ctx.font='bold 9px system-ui';
+    ctx.textAlign='right'; ctx.textBaseline='top';
+    ctx.fillText(`×${zoom.toFixed(zoom<2?1:0)} · dbl-clic reset`, W-4, 4);
+  }
+}
+
+// ─── COMPASS / AZIMUTH ROSE ──────────────────────────────────────────────────
+function drawCompass(azDeg, altDeg) {
+  const c=document.getElementById('azimuth-canvas');
+  const ctx=c.getContext('2d'); const W=200,H=200,cx=100,cy=100,r=78;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.beginPath();ctx.arc(cx,cy,r+20,0,Math.PI*2);ctx.fillStyle='#edf1f8';ctx.fill();
+  ctx.beginPath();ctx.arc(cx,cy,r+20,0,Math.PI*2);ctx.strokeStyle='rgba(100,130,180,0.18)';ctx.lineWidth=1;ctx.stroke();
+
+  // Concentric rings
+  [r*0.35,r*0.7,r].forEach(rr=>{
+    ctx.beginPath();ctx.arc(cx,cy,rr,0,Math.PI*2);
+    ctx.strokeStyle='rgba(100,130,180,0.12)';ctx.lineWidth=0.5;ctx.stroke();
+  });
+
+  // Degree ticks
+  for(let deg=0;deg<360;deg+=10){
+    const rad=(deg-90)*DEG;
+    const outer=deg%90===0?r+14:deg%45===0?r+10:r+5;
+    const inner=r;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(rad)*inner,cy+Math.sin(rad)*inner);
+    ctx.lineTo(cx+Math.cos(rad)*outer,cy+Math.sin(rad)*outer);
+    ctx.strokeStyle=deg%90===0?'rgba(80,110,160,0.40)':'rgba(100,130,180,0.18)';
+    ctx.lineWidth=deg%90===0?1.5:0.5;ctx.stroke();
+  }
+
+  // Cardinal directions
+  [['N',0,'#dc2626'],['NE',45,'rgba(80,100,140,0.55)'],['E',90,'rgba(80,100,140,0.55)'],
+   ['SE',135,'rgba(80,100,140,0.55)'],['S',180,'rgba(80,100,140,0.55)'],
+   ['SO',225,'rgba(80,100,140,0.55)'],['O',270,'rgba(80,100,140,0.55)'],
+   ['NO',315,'rgba(80,100,140,0.55)']].forEach(([lbl,deg,col])=>{
+    const rad=(deg-90)*DEG;
+    const dist=r+22;
+    ctx.fillStyle=col;
+    ctx.font=lbl.length===1?'bold 12px system-ui':'9px system-ui';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(lbl,cx+Math.cos(rad)*dist,cy+Math.sin(rad)*dist);
+  });
+
+  // Shadow direction (opposite of sun)
+  const shadRad=(azDeg+180-90)*DEG;
+  const shx=cx+Math.cos(shadRad)*r*0.72, shy=cy+Math.sin(shadRad)*r*0.72;
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(shx,shy);
+  ctx.strokeStyle='rgba(80,150,255,0.7)';ctx.lineWidth=2.5;ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(shx,shy,4,0,Math.PI*2);ctx.fillStyle='rgba(80,150,255,0.9)';ctx.fill();
+
+  // Sun direction
+  const sunRad=(azDeg-90)*DEG;
+  const sx=cx+Math.cos(sunRad)*r*0.8, sy=cy+Math.sin(sunRad)*r*0.8;
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(sx,sy);
+  ctx.strokeStyle='rgba(240,165,0,0.9)';ctx.lineWidth=2.5;ctx.stroke();
+
+  // Sun symbol
+  ctx.beginPath();ctx.arc(sx,sy,6,0,Math.PI*2);
+  ctx.fillStyle=altDeg>0?'#f0a500':'#555555';ctx.fill();
+  ctx.beginPath();ctx.arc(sx,sy,6,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+
+  // Center
+  ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.fillStyle='rgba(80,110,160,0.5)';ctx.fill();
+
+  // Info
+  document.getElementById('azimuth-info').innerHTML =
+    `☀ Sol: <strong style="color:#ff9f0a">${azDeg.toFixed(1)}°</strong>  |  Alt: <strong style="color:#ff9f0a">${altDeg.toFixed(1)}°</strong><br>` +
+    `↓ Sombra: <strong style="color:#5ac8f5">${((azDeg+180)%360).toFixed(1)}°</strong>`;
+
+  // Phase badge in header
+  let phaseName = '—';
+  const d=currentDate; const times=SunCalc.getTimes(d,lat,lon);
+  const nowMs=d.getTime();
+  if(times.nightEnd&&nowMs<times.nightEnd.getTime()) phaseName='Noche';
+  else if(times.nauticalDawn&&nowMs<times.nauticalDawn.getTime()) phaseName='Crepúsculo astron.';
+  else if(times.dawn&&nowMs<times.dawn.getTime()) phaseName='Crepúsculo náutico';
+  else if(times.sunrise&&nowMs<times.sunrise.getTime()) phaseName='Hora azul';
+  else if(times.goldenHourEnd&&nowMs<times.goldenHourEnd.getTime()) phaseName='Hora dorada ☀';
+  else if(times.solarNoon&&nowMs<times.solarNoon.getTime()) phaseName='Día';
+  else if(times.goldenHour&&nowMs<times.goldenHour.getTime()) phaseName='Día';
+  else if(times.sunsetStart&&nowMs<times.sunsetStart.getTime()) phaseName='Hora dorada 🌅';
+  else if(times.sunset&&nowMs<times.sunset.getTime()) phaseName='Puesta de sol';
+  else if(times.dusk&&nowMs<times.dusk.getTime()) phaseName='Hora azul';
+  else if(times.nauticalDusk&&nowMs<times.nauticalDusk.getTime()) phaseName='Crepúsculo civil';
+  else if(times.night&&nowMs<times.night.getTime()) phaseName='Crepúsculo náutico';
+  else phaseName='Noche';
+  document.getElementById('h-phase').textContent = phaseName;
+}
+
+// ─── SUN & MOON RAYS ON MAP ──────────────────────────────────────────────────
+function drawShadowRay(azDeg, altDeg, moonAzDeg, moonAltDeg, moonPct, times) {
+  const c=document.getElementById('shadow-canvas');
+  const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!map) return;
+
+  const markerPx = map.latLngToContainerPoint([lat,lon]);
+  if(!markerPx) return;
+
+  // ── LÍNEAS FIJAS: salida/puesta de sol (amarillo) y luna (azul) ──────────
+  function drawFixedLine(azimuthDeg, color, label, dashed) {
+    const rad = azimuthDeg * DEG;
+    const len = 3000;
+    const dx = Math.sin(rad)*len, dy = -Math.cos(rad)*len;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(markerPx.x, markerPx.y);
+    ctx.lineTo(markerPx.x + dx, markerPx.y + dy);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = dashed ? 2.2 : 2.8;
+    ctx.globalAlpha = dashed ? 0.7 : 0.85;
+    if (dashed) ctx.setLineDash([10, 6]); else ctx.setLineDash([]);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Etiqueta
+    const lx = markerPx.x + Math.sin(rad)*105;
+    const ly = markerPx.y - Math.cos(rad)*105;
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = color;
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, lx, ly);
+    ctx.restore();
+  }
+
+  // Calcular acimutes de salida/puesta de sol y luna para HOY
+  const d = currentDate;
+  // Sol
+  if (times.sunrise) {
+    const risePos = SunCalc.getPosition(times.sunrise, lat, lon);
+    const riseAz = (rad2deg(risePos.azimuth) + 180 + 360) % 360;
+    drawFixedLine(riseAz, '#ffe066', '↑☀', false);
+  }
+  if (times.sunset) {
+    const setPos = SunCalc.getPosition(times.sunset, lat, lon);
+    const setAz = (rad2deg(setPos.azimuth) + 180 + 360) % 360;
+    drawFixedLine(setAz, '#ffaa00', '↓☀', false);
+  }
+  // Luna
+  const moonTimes = SunCalc.getMoonTimes(d, lat, lon);
+  if (moonTimes.rise) {
+    const mrPos = SunCalc.getMoonPosition(moonTimes.rise, lat, lon);
+    const mrAz = (rad2deg(mrPos.azimuth) + 180 + 360) % 360;
+    drawFixedLine(mrAz, '#60aaff', '↑🌙', true);
+  }
+  if (moonTimes.set) {
+    const msPos = SunCalc.getMoonPosition(moonTimes.set, lat, lon);
+    const msAz = (rad2deg(msPos.azimuth) + 180 + 360) % 360;
+    drawFixedLine(msAz, '#2979e8', '↓🌙', true);
+  }
+
+  // ── SUN LINE (naranja) ────────────────────────────────────────────────────
+  if(altDeg > -1) {
+    const sunRad = azDeg * DEG;
+    const sunLen = altDeg > 0 ? 2000 : 800; // si bajo horizonte, línea más corta y tenue
+    const sdx = Math.sin(sunRad)*sunLen;
+    const sdy = -Math.cos(sunRad)*sunLen;
+    const alpha = altDeg > 0 ? 0.85 : 0.25;
+    const sunGrad=ctx.createLinearGradient(markerPx.x,markerPx.y,markerPx.x+sdx,markerPx.y+sdy);
+    sunGrad.addColorStop(0,`rgba(255,165,0,${alpha})`);
+    sunGrad.addColorStop(0.3,`rgba(255,140,0,${alpha*0.7})`);
+    sunGrad.addColorStop(1,'rgba(255,120,0,0)');
+    ctx.beginPath();ctx.moveTo(markerPx.x,markerPx.y);ctx.lineTo(markerPx.x+sdx,markerPx.y+sdy);
+    ctx.strokeStyle=sunGrad; ctx.lineWidth=altDeg>0?3:1.5; ctx.lineCap='round'; ctx.stroke();
+    // Flecha sol
+    if(altDeg>0) {
+      const ang=sunRad;
+      const ax=markerPx.x+Math.sin(ang)*55, ay=markerPx.y-Math.cos(ang)*55;
+      ctx.beginPath();
+      ctx.moveTo(ax,ay);
+      ctx.lineTo(ax-Math.sin(ang)*13+Math.cos(ang)*6,ay+Math.cos(ang)*13+Math.sin(ang)*6);
+      ctx.lineTo(ax-Math.sin(ang)*13-Math.cos(ang)*6,ay+Math.cos(ang)*13-Math.sin(ang)*6);
+      ctx.closePath();ctx.fillStyle='rgba(255,165,0,0.9)';ctx.fill();
+    }
+    // Etiqueta sol
+    if(altDeg>2) {
+      const lx=markerPx.x+Math.sin(sunRad)*75, ly=markerPx.y-Math.cos(sunRad)*75;
+      ctx.fillStyle='rgba(255,165,0,0.95)'; ctx.font='bold 11px system-ui';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('☀ Sol',lx,ly);
+    }
+  }
+
+  // ── LUNA LINE (plata / blanco-azulado) ───────────────────────────────────
+  if(moonAltDeg > -1) {
+    const moonRad = moonAzDeg * DEG;
+    const moonLen = moonAltDeg > 0 ? 2000 : 600;
+    const alpha = moonAltDeg > 0 ? 0.8 : 0.2;
+    const mdx = Math.sin(moonRad)*moonLen;
+    const mdy = -Math.cos(moonRad)*moonLen;
+    const moonGrad=ctx.createLinearGradient(markerPx.x,markerPx.y,markerPx.x+mdx,markerPx.y+mdy);
+    moonGrad.addColorStop(0,`rgba(200,220,255,${alpha})`);
+    moonGrad.addColorStop(0.3,`rgba(180,200,240,${alpha*0.7})`);
+    moonGrad.addColorStop(1,'rgba(160,180,220,0)');
+    ctx.beginPath();ctx.moveTo(markerPx.x,markerPx.y);ctx.lineTo(markerPx.x+mdx,markerPx.y+mdy);
+    ctx.strokeStyle=moonGrad; ctx.lineWidth=moonAltDeg>0?2.5:1; ctx.lineCap='round'; ctx.stroke();
+    // Flecha luna
+    if(moonAltDeg>0) {
+      const ang=moonRad;
+      const ax=markerPx.x+Math.sin(ang)*55, ay=markerPx.y-Math.cos(ang)*55;
+      ctx.beginPath();
+      ctx.moveTo(ax,ay);
+      ctx.lineTo(ax-Math.sin(ang)*12+Math.cos(ang)*5,ay+Math.cos(ang)*12+Math.sin(ang)*5);
+      ctx.lineTo(ax-Math.sin(ang)*12-Math.cos(ang)*5,ay+Math.cos(ang)*12-Math.sin(ang)*5);
+      ctx.closePath();ctx.fillStyle='rgba(200,220,255,0.9)';ctx.fill();
+      // Etiqueta luna
+      if(moonAltDeg>2) {
+        const lx=markerPx.x+Math.sin(moonRad)*78, ly=markerPx.y-Math.cos(moonRad)*78;
+        ctx.fillStyle='rgba(200,220,255,0.95)'; ctx.font='bold 11px system-ui';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(`🌙 ${moonPct}%`,lx,ly);
+      }
+    }
+  }
+
+  // Marcador central (glow)
+  ctx.beginPath();ctx.arc(markerPx.x,markerPx.y,14,0,Math.PI*2);
+  ctx.fillStyle='rgba(240,165,0,0.12)';ctx.fill();
+}
+
+// ─── YEAR ANALEMA ────────────────────────────────────────────────────────────
+function drawYearAnalemma(now) {
+  const c=document.getElementById('year-canvas');
+  c.width = c.parentElement.clientWidth - 2;
+  const ctx=c.getContext('2d'); const W=c.width,H=c.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#edf1f8';ctx.fillRect(0,0,W,H);
+
+  const yr=now.getFullYear();
+  const h=now.getHours(),mi=now.getMinutes();
+  const pts=[];
+  for(let day=0;day<365;day++){
+    const d=new Date(yr,0,1+day,h,mi,0);
+    const p=SunCalc.getPosition(d,lat,lon);
+    pts.push({az:sunAz(p),alt:sunAlt(p),month:d.getMonth()});
+  }
+  const azs=pts.map(p=>p.az), alts=pts.map(p=>p.alt);
+  const minAz=Math.min(...azs)-3,maxAz=Math.max(...azs)+3;
+  const minAlt=Math.min(...alts)-3,maxAlt=Math.max(...alts)+3;
+  const toX=az=>8+((az-minAz)/(maxAz-minAz))*(W-16);
+  const toY=alt=>H-8-((alt-minAlt)/(maxAlt-minAlt))*(H-16);
+
+  // Horizon
+  if(minAlt<0&&maxAlt>0){
+    const y0=toY(0);
+    ctx.strokeStyle='rgba(100,130,180,0.18)';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(8,y0);ctx.lineTo(W-8,y0);ctx.stroke();
+    ctx.fillStyle='rgba(80,100,140,0.65)';ctx.font='8px system-ui';ctx.textAlign='left';
+    ctx.fillText('Horizonte',10,y0-2);
+  }
+
+  const monthColors=['#388bfd','#58a6ff','#56d364','#39d353','#f0a500','#e88a00',
+                     '#e05c00','#f85149','#bc8cff','#a371f7','#58a6ff','#1f6feb'];
+  for(let i=1;i<pts.length;i++){
+    ctx.beginPath();
+    ctx.moveTo(toX(pts[i-1].az),toY(pts[i-1].alt));
+    ctx.lineTo(toX(pts[i].az),toY(pts[i].alt));
+    ctx.strokeStyle=monthColors[pts[i].month];ctx.lineWidth=1.5;ctx.stroke();
+  }
+
+  // Today dot
+  const todayIdx=Math.min(Math.floor((now.getTime()-new Date(yr,0,1).getTime())/86400000),364);
+  const tp=pts[todayIdx];
+  if(tp){
+    ctx.beginPath();ctx.arc(toX(tp.az),toY(tp.alt),5,0,Math.PI*2);
+    ctx.fillStyle='#f0a500';ctx.fill();
+    ctx.beginPath();ctx.arc(toX(tp.az),toY(tp.alt),5,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=1.5;ctx.stroke();
+  }
+
+  ctx.fillStyle='rgba(80,100,140,0.60)';ctx.font='8px system-ui';ctx.textAlign='left';ctx.textBaseline='top';
+  ctx.fillText('Analema — '+pad(h)+':'+pad(mi)+' cada día del año',6,4);
+}
+
+// ─── PHASES LIST ─────────────────────────────────────────────────────────────
+function updatePhases(now, times) {
+  const nowMs=now.getTime();
+  const phases=[
+    {label:'Noche astronómica (fin)',  time:times.nightEnd,      col:'#1f6feb'},
+    {label:'Crepúsculo náutico',       time:times.nauticalDawn,  col:'#388bfd'},
+    {label:'Crepúsculo civil / Alba',  time:times.dawn,          col:'#58a6ff'},
+    {label:'Hora azul (fin)',          time:times.blueHourEnd||times.dawn, col:'#80bfff'},
+    {label:'Salida del sol',           time:times.sunrise,       col:'#f97316'},
+    {label:'Hora dorada (fin mañana)', time:times.goldenHourEnd, col:'#f0a500'},
+    {label:'Mediodía solar',           time:times.solarNoon,     col:'#f0c040'},
+    {label:'Hora dorada (tarde)',      time:times.goldenHour,    col:'#f0a500'},
+    {label:'Inicio puesta',            time:times.sunsetStart,   col:'#f97316'},
+    {label:'Puesta del sol',           time:times.sunset,        col:'#e05c00'},
+    {label:'Crepúsculo civil / Ocaso', time:times.dusk,          col:'#58a6ff'},
+    {label:'Hora azul (tarde)',        time:times.blueHour||times.dusk, col:'#80bfff'},
+    {label:'Crepúsculo náutico (ocaso)',time:times.nauticalDusk, col:'#388bfd'},
+    {label:'Noche astronómica',        time:times.night,         col:'#1f6feb'},
+  ];
+
+  let closestIdx=0, closestDiff=Infinity;
+  phases.forEach((p,i)=>{
+    if(p.time&&!isNaN(p.time.getTime())){
+      const diff=Math.abs(p.time.getTime()-nowMs);
+      if(diff<closestDiff){closestDiff=diff;closestIdx=i;}
+    }
+  });
+
+  const el=document.getElementById('phases-list');
+  el.innerHTML=phases.map((p,i)=>`
+    <div class="phase-row ${i===closestIdx?'phase-now':''}">
+      <div class="phase-dot" style="background:${p.col}"></div>
+      <span class="phase-label">${p.label}</span>
+      <span class="phase-time">${p.time&&!isNaN(p.time.getTime())?fmtTime(p.time):'—'}</span>
+    </div>`).join('');
+}
+
+// ─── TOGGLE PANELS ───────────────────────────────────────────────────────────
+let panelsVisible = true;
+function togglePanels() {
+  panelsVisible = !panelsVisible;
+  const left  = document.getElementById('left-panel');
+  const right = document.getElementById('right-panel');
+  const btn   = document.getElementById('panels-toggle-btn');
+  if (panelsVisible) {
+    left.classList.remove('panel-hidden');
+    right.classList.remove('panel-hidden');
+    btn.classList.remove('active-btn');
+    btn.title = 'Ocultar paneles';
+  } else {
+    left.classList.add('panel-hidden');
+    right.classList.add('panel-hidden');
+    btn.classList.add('active-btn');
+    btn.title = 'Mostrar paneles';
+  }
+  // Redimensionar el mapa tras el cambio de layout
+  setTimeout(() => { map.invalidateSize(); resizeShadowCanvas(); update(); }, 50);
+}
+
+
+// ─── PEAKFINDER ──────────────────────────────────────────────────────────────
+function openPeakFinder() {
+  const pfLat  = lat.toFixed(5);
+  const pfLon  = lon.toFixed(5);
+  const pfName = encodeURIComponent(document.getElementById('loc-name').textContent || 'Ubicación');
+  const d      = currentDate;
+  const url = `./peakfinder.html?lat=${pfLat}&lng=${pfLon}&name=${pfName}` +
+    `&year=${d.getUTCFullYear()}&month=${d.getUTCMonth()+1}&day=${d.getUTCDate()}` +
+    `&hour=${d.getUTCHours()}&min=${d.getUTCMinutes()}`;
+
+  // En Tauri window.open no funciona para archivos locales — usamos el panel iframe integrado
+  if (window.__TAURI__) {
+    const panel = document.getElementById('peakfinder-panel');
+    const iframe = panel ? panel.querySelector('iframe') : null;
+    if (panel && iframe) {
+      iframe.src = url;
+      panel.classList.add('pf-open');
+      // Actualizar label de coordenadas en la barra del panel
+      const label = document.getElementById('pf-coords-label');
+      if (label) label.textContent = `${pfLat}°, ${pfLon}°`;
+      return;
+    }
+  }
+
+  // En navegador: window.open normal
+  window.open(url, '_blank');
+}
+
+function closePeakFinder() {
+  const panel = document.getElementById('peakfinder-panel');
+  const iframe = document.getElementById('peakfinder-iframe');
+  if (panel) panel.classList.remove('pf-open');
+  // Limpiar el src para detener la carga y liberar memoria
+  if (iframe) setTimeout(() => { iframe.src = ''; }, 300);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+function init() {
+  const now=new Date();
+  currentDate=now;
+  setDatetimeInputs(now);
+  initMap();
+  resizeShadowCanvas();
+  onLocationChange();
+  window.addEventListener('resize',()=>{ resizeShadowCanvas(); update(); });
+}
+
+// ─── MOBILE UI ───────────────────────────────────────────────────────────────
+const isMobile = () => window.innerWidth <= 700;
+
+// Tab switching — toggle drawer si ya está activo el mismo tab
+function switchTab(tab) {
+  const drawer = document.getElementById('mobile-bottom-drawer');
+  const isOpen = drawer.classList.contains('drawer-open');
+  const currentActive = document.querySelector('.tab-btn.tab-active')?.dataset.tab;
+
+  // Si pulsamos el mismo tab y el drawer está abierto → cerrarlo
+  if (isOpen && currentActive === tab) {
+    drawer.classList.remove('drawer-open');
+    return;
+  }
+
+  // Cambiar contenido
+  document.querySelectorAll('.drawer-tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+  const el = document.getElementById('tab-' + tab);
+  if (el) el.style.display = 'block';
+  const btn = document.querySelector(`[data-tab="${tab}"]`);
+  if (btn) btn.classList.add('tab-active');
+
+  // Abrir drawer
+  drawer.classList.add('drawer-open');
+
+  // Redibujar canvas si aplica
+  if (tab === 'brujula' && isMobile()) {
+    setTimeout(() => drawAzimuthCanvas(currentDate), 50);
+  }
+}
+
+// Drawer toggle (via handle)
+function toggleDrawer() {
+  document.getElementById('mobile-bottom-drawer').classList.toggle('drawer-open');
+}
+
+// Sync mobile date/time inputs to desktop inputs
+function syncMobileInputs() {
+  if (!isMobile()) return;
+  const dm = document.getElementById('date-input-m');
+  const tm = document.getElementById('time-input-m');
+  const ds = document.getElementById('date-input');
+  const ts = document.getElementById('time-input');
+  if (dm && ds) dm.value = ds.value;
+  if (tm && ts) tm.value = ts.value;
+  const slm = document.getElementById('time-slider-m');
+  const sls = document.getElementById('time-slider');
+  if (slm && sls) slm.value = sls.value;
+  const tdm = document.getElementById('time-display-m');
+  const tds = document.getElementById('time-display');
+  if (tdm && tds) tdm.textContent = tds.textContent;
+
+  // Sync anim toggle
+  const atm = document.getElementById('anim-toggle-m');
+  const ats = document.getElementById('anim-toggle');
+  if (atm && ats) atm.checked = ats.checked;
+
+  // Sync phases list
+  const plm = document.getElementById('phases-list-m');
+  const pls = document.getElementById('phases-list');
+  if (plm && pls) plm.innerHTML = pls.innerHTML;
+
+  // Sync stats
+  const stm = document.getElementById('stats-list-m');
+  const sts = document.getElementById('stats-list');
+  if (stm && sts) stm.innerHTML = sts.innerHTML;
+
+  // Sync sun cards
+  const sgm = document.getElementById('sun-grid-mobile');
+  const sgs = document.getElementById('sun-grid');
+  if (sgm && sgs) sgm.innerHTML = sgs.innerHTML;
+
+  // Sync location
+  const lnm = document.getElementById('loc-name-m');
+  const lns = document.getElementById('loc-name');
+  if (lnm && lns) lnm.textContent = lns.textContent;
+  const lcm = document.getElementById('loc-coords-m');
+  const lcs = document.getElementById('loc-coords');
+  if (lcm && lcs) lcm.textContent = lcs.textContent;
+
+  // Sync azimuth info
+  const aim = document.getElementById('azimuth-info-m');
+  const ais = document.getElementById('azimuth-info');
+  if (aim && ais) aim.innerHTML = ais.innerHTML;
+}
+
+// Mobile date/time input handlers
+document.addEventListener('DOMContentLoaded', () => {
+  const dm = document.getElementById('date-input-m');
+  const tm = document.getElementById('time-input-m');
+  if (dm) dm.addEventListener('change', () => {
+    document.getElementById('date-input').value = dm.value;
+    const d = getDatetime(); currentDate = d; setDatetimeInputs(currentDate); update();
+  });
+  if (tm) tm.addEventListener('change', () => {
+    document.getElementById('time-input').value = tm.value;
+    const d = getDatetime(); currentDate = d; setDatetimeInputs(currentDate); update();
+  });
+
+  const slm = document.getElementById('time-slider-m');
+  if (slm) slm.addEventListener('input', () => {
+    document.getElementById('time-slider').value = slm.value;
+    const mins = parseInt(slm.value);
+    const h = Math.floor(mins/60), m = mins%60;
+    const d = getDatetime(); d.setHours(h,m,0,0);
+    currentDate = d; setDatetimeInputs(currentDate); update();
+  });
+
+  const asm = document.getElementById('anim-speed-m');
+  if (asm) asm.addEventListener('change', () => {
+    document.getElementById('anim-speed').value = asm.value;
+  });
+
+  // Drawer stays closed on load — user opens via tabs
+});
+
+// Hook into update() to sync mobile after each update
+const _origUpdate = typeof update === 'function' ? update : null;
+
+// ─── MOBILE AZIMUTH CANVAS ───────────────────────────────────────────────────
+function drawAzimuthMobile(date) {
+  const c = document.getElementById('azimuth-canvas-m');
+  if (!c || !isMobile()) return;
+  // Copy from main azimuth canvas
+  const src = document.getElementById('azimuth-canvas');
+  if (!src) return;
+  c.width = src.width; c.height = src.height;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(src, 0, 0);
+}
+
+window.addEventListener('load', init);
+
+// ── SERVICE WORKER ────────────────────────────────────────
+// Service worker: solo en web, no en Tauri (protocolo tauri:// no lo soporta)
+if ('serviceWorker' in navigator && !window.__TAURI__) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('[SW] Registrado:', reg.scope))
+      .catch(err => console.warn('[SW] Error:', err));
+  });
+}
+</script>
+</body>
+</html>

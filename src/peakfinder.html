@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PeakFinder</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#f5f0eb; }
+#pfcanvas { display:block; width:100%; height:100%; outline:none; }
+#pfcanvasprogress {
+  position:fixed; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:#f5f0eb; gap:14px;
+  font-family: system-ui, sans-serif; font-size:13px; color:#666;
+}
+.spinner {
+  width:36px; height:36px; border-radius:50%;
+  border:3px solid rgba(245,166,35,0.25);
+  border-top-color:#f5a623;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+<script async type="text/javascript" src="https://www.peakfinder.com/script/peakfinder.1.0.min.js"></script>
+</head>
+<body>
+<canvas id="pfcanvas" oncontextmenu="event.preventDefault()"></canvas>
+<div id="pfcanvasprogress">
+  <div class="spinner"></div>
+  <span>Cargando panorámica…</span>
+</div>
+
+<script>
+// Leer parámetros de la URL
+const params = new URLSearchParams(location.search);
+const pfLat  = parseFloat(params.get('lat') || '43.3246');
+const pfLon  = parseFloat(params.get('lng') || '-1.9936');
+const pfName = params.get('name') || 'Ubicación';
+const pfYear = parseInt(params.get('year')  || new Date().getFullYear());
+const pfMonth= parseInt(params.get('month') || (new Date().getMonth()+1));
+const pfDay  = parseInt(params.get('day')   || new Date().getDate());
+const pfHour = parseInt(params.get('hour')  || new Date().getHours());
+const pfMin  = parseInt(params.get('min')   || new Date().getMinutes());
+
+function waitForLib() {
+  if (typeof PeakFinder === 'undefined' || !PeakFinder.utils) {
+    setTimeout(waitForLib, 100); return;
+  }
+  if (!PeakFinder.utils.caniuse()) {
+    document.getElementById('pfcanvasprogress').innerHTML = '<p>Tu navegador no soporta PeakFinder Canvas.</p>';
+    return;
+  }
+  startPanel();
+}
+
+async function startPanel() {
+  const panel = new PeakFinder.PanoramaPanel({
+    canvasid: 'pfcanvas',
+    locale: 'es',
+    theme: 'light'
+  });
+
+  await panel.asyncinit();
+
+  panel.settings.showSun(1);
+  panel.settings.showMoon(1);
+
+  panel.loadViewpoint(pfLat, pfLon, pfName);
+
+  // Esperar a que el viewpoint termine de cargar
+  while (!panel.viewpointJourneyFinished()) {
+    await PeakFinder.utils.sleep(0.3);
+  }
+
+  // Aplicar la fecha/hora seleccionada
+  panel.astro.currentDateTime(pfYear, pfMonth, pfDay, pfHour, pfMin);
+
+  // Ocultar spinner
+  document.getElementById('pfcanvasprogress').style.display = 'none';
+}
+
+waitForLib();
+</script>
+</body>
+</html>

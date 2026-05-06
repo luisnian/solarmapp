@@ -1,0 +1,24 @@
+[package]
+name = "solarm-app"
+version = "1.0.0"
+description = "solarmapp — Simulador de Posición Solar y Sombras"
+authors = ["Luis Nieto <luisnietofoto.com>"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.60"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.7", features = ["shell-open", "http-all"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
